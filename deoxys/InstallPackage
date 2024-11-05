@@ -15,14 +15,8 @@ sudo apt-get install libzmq3-dev -y
 git clone --recursive https://github.com/frankaemika/libfranka
 cd libfranka
 
-echo "Which libfranka version are you going to use? (currently supporting 0.8.0 and 0.9.0, can do 0.10.0 but no guarantee)"
-read version
-echo "chose libfranka ${version}"
-if [[ "$version" != "0.8.0" && "$version" != "0.9.0" && "$version" != "0.10.0" ]]
-then
-    printf "${RED} The version ${version} won't be supported!!! \n ${NC}"
-fi
-git checkout ${version}
+# hsc: we use libfranka 0.8.0
+git checkout 0.8.0
 
 git submodule update
 cd ..
@@ -42,7 +36,7 @@ cd ..
 # download protobuf
 git clone --recursive https://github.com/protocolbuffers/protobuf.git
 cd protobuf
-git checkout v3.13.0
+git checkout v5.28.3
 git submodule update
 
 ./autogen.sh
