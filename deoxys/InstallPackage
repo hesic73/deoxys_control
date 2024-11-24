@@ -36,7 +36,7 @@ cd ..
 # download protobuf
 git clone --recursive https://github.com/protocolbuffers/protobuf.git
 cd protobuf
-git checkout v5.28.3
+git checkout v3.13.0
 git submodule update
 
 ./autogen.sh
