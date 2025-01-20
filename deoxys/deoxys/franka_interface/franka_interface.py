@@ -479,8 +479,9 @@ class FrankaInterface:
             msg_str = control_msg.SerializeToString()
             self._publisher.send(msg_str)
 
-        if self.has_gripper:
-            self.gripper_control(action[self.last_gripper_dim])
+        # NOTE (hsc): commented out on 2025-01-19
+        # if self.has_gripper:
+        #     self.gripper_control(action[self.last_gripper_dim])
 
         if self.use_visualizer and len(self._state_buffer) > 0:
             self.visualizer.update(joint_positions=np.array(self._state_buffer[-1].q))

@@ -15,8 +15,17 @@ do
     fi
 done
 
+# while true
+# do
+#     bin/franka-interface $@
+#     sleep 1
+# done
+
 while true
 do
-    bin/franka-interface $@
+    bin/franka-interface $@ 2>&1 | tee -a franka_error.log
+    if [ $? -ne 0 ]; then
+        printf "${BIRed} franka-interface crashed. Restarting... ${Color_Off} \n"
+    fi
     sleep 1
 done
