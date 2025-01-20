@@ -28,6 +28,7 @@ def action_to_osc_pose_goal(action, is_delta=True) -> franka_controller_pb2.Goal
     goal.az = action[5]
     return goal
 
+
 def action_to_cartesian_velocity(action, is_delta=True) -> franka_controller_pb2.Goal:
     goal = franka_controller_pb2.Goal()
     goal.is_delta = is_delta
@@ -38,6 +39,7 @@ def action_to_cartesian_velocity(action, is_delta=True) -> franka_controller_pb2
     goal.ay = action[4]
     goal.az = action[5]
     return goal
+
 
 def action_to_joint_pos_goal(action, is_delta=False) -> franka_controller_pb2.JointGoal:
     goal = franka_controller_pb2.JointGoal()
@@ -84,7 +86,7 @@ class FrankaInterface:
         control_timeout: float = 1.0,
         has_gripper: bool = True,
         use_visualizer: bool = False,
-        automatic_gripper_reset: bool=True,
+        automatic_gripper_reset: bool = True,
     ):
         general_cfg = YamlConfig(general_cfg_file).as_easydict()
         self._name = general_cfg.PC.NAME
@@ -111,7 +113,8 @@ class FrankaInterface:
         self._subscriber.connect(f"tcp://{self._ip}:{self._sub_port}")
 
         self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-        self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
+        self._gripper_subscriber.connect(
+            f"tcp://{self._ip}:{self._gripper_sub_port}")
 
         self._state_buffer = []
         self._state_buffer_idx = 0
@@ -136,7 +139,8 @@ class FrankaInterface:
         self._state_sub_thread.daemon = True
         self._state_sub_thread.start()
 
-        self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
+        self._gripper_sub_thread = threading.Thread(
+            target=self.get_gripper_state)
         self._gripper_sub_thread.daemon = True
         self._gripper_sub_thread.start()
 
@@ -202,7 +206,8 @@ class FrankaInterface:
             gripper_control_msg.control_msg.Pack(move_msg)
 
             logger.debug("Moving Command")
-            self._gripper_publisher.send(gripper_control_msg.SerializeToString())
+            self._gripper_publisher.send(
+                gripper_control_msg.SerializeToString())
 
         for _ in range(20):
             dummy_msg = franka_controller_pb2.FrankaDummyControllerMessage()
@@ -253,7 +258,8 @@ class FrankaInterface:
             self.preprocess()
             self._last_controller_type = controller_type
 
-        controller_cfg = verify_controller_config(controller_cfg, use_default=True)
+        controller_cfg = verify_controller_config(
+            controller_cfg, use_default=True)
 
         state_estimator_msg = franka_controller_pb2.FrankaStateEstimatorMessage()
         state_estimator_msg.is_estimation = (
@@ -280,12 +286,13 @@ class FrankaInterface:
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
             osc_msg.config.CopyFrom(osc_config)
             action[0:3] *= controller_cfg.action_scale.translation
-            action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 
             logger.debug(f"OSC action: {np.round(action, 3)}")
 
             self._history_actions.append(action)
-            goal = action_to_osc_pose_goal(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
             osc_msg.goal.CopyFrom(goal)
 
             control_msg = franka_controller_pb2.FrankaControlMessage()
@@ -320,11 +327,12 @@ class FrankaInterface:
             osc_msg.config.CopyFrom(osc_config)
 
             action[0:3] *= controller_cfg.action_scale.translation
-            action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 
             self._history_actions.append(action)
 
-            goal = action_to_osc_pose_goal(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
             osc_msg.goal.CopyFrom(goal)
             control_msg = franka_controller_pb2.FrankaControlMessage()
             control_msg.controller_type = (
@@ -357,11 +365,12 @@ class FrankaInterface:
             osc_msg.config.CopyFrom(osc_config)
 
             action[0:3] *= controller_cfg.action_scale.translation
-            action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 
             self._history_actions.append(action)
 
-            goal = action_to_osc_pose_goal(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
             osc_msg.goal.CopyFrom(goal)
             control_msg = franka_controller_pb2.FrankaControlMessage()
             control_msg.controller_type = (
@@ -389,7 +398,8 @@ class FrankaInterface:
 
             joint_pos_msg = franka_controller_pb2.FrankaJointPositionControllerMessage()
             joint_pos_msg.speed_factor = 0.1
-            goal = action_to_joint_pos_goal(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_joint_pos_goal(
+                action, is_delta=controller_cfg.is_delta)
 
             joint_pos_msg.goal.CopyFrom(goal)
 
@@ -420,7 +430,8 @@ class FrankaInterface:
             joint_impedance_msg = (
                 franka_controller_pb2.FrankaJointImpedanceControllerMessage()
             )
-            goal = action_to_joint_pos_goal(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_joint_pos_goal(
+                action, is_delta=controller_cfg.is_delta)
 
             joint_impedance_msg.goal.CopyFrom(goal)
 
@@ -452,12 +463,285 @@ class FrankaInterface:
             cartesian_velocity_msg = franka_controller_pb2.FrankaCartesianVelocityControllerMessage()
 
             action[0:3] *= controller_cfg.action_scale.translation
-            action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
 
             logger.debug(f"OSC action: {np.round(action, 3)}")
 
             self._history_actions.append(action)
-            goal = action_to_cartesian_velocity(action, is_delta=controller_cfg.is_delta)
+            goal = action_to_cartesian_velocity(
+                action, is_delta=controller_cfg.is_delta)
+            cartesian_velocity_msg.goal.CopyFrom(goal)
+
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.CARTESIAN_VELOCITY
+            )
+            control_msg.traj_interpolator_type = TRAJ_INTERPOLATOR_MAPPING[
+                controller_cfg.traj_interpolator_cfg.traj_interpolator_type
+            ]
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(cartesian_velocity_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        if self.has_gripper:
+            self.gripper_control(action[self.last_gripper_dim])
+
+        if self.use_visualizer and len(self._state_buffer) > 0:
+            self.visualizer.update(
+                joint_positions=np.array(self._state_buffer[-1].q))
+
+    def arm_control(
+        self,
+        controller_type: str,
+        action: Union[np.ndarray, list],
+        controller_cfg: dict = None,
+        termination: bool = False,
+    ):
+        """A function that controls every step on the policy level.
+
+        Args:
+            controller_type (str): The type of controller used in this step.
+            action (Union[np.ndarray, list]): The action command for the controller.
+            controller_cfg (dict, optional): Controller configuration that corresponds to the first argument`controller_type`. Defaults to None.
+            termination (bool, optional): If set True, the control will be terminated. Defaults to False.
+        """
+        action = np.array(action)
+        if self.last_time == None:
+            self.last_time = time.time_ns()
+        elif not termination:
+            # Control the policy frequency if not terminated.
+            current_time = time.time_ns()
+            remaining_time = self._control_interval - (
+                current_time - self.last_time
+            ) / (10**9)
+            if 0.0001 < remaining_time < self._control_timeout:
+                time.sleep(remaining_time)
+            self.last_time = time.time_ns()
+
+        if self._last_controller_type != controller_type:
+            self.preprocess()
+            self._last_controller_type = controller_type
+
+        controller_cfg = verify_controller_config(
+            controller_cfg, use_default=True)
+
+        state_estimator_msg = franka_controller_pb2.FrankaStateEstimatorMessage()
+        state_estimator_msg.is_estimation = (
+            controller_cfg.state_estimator_cfg.is_estimation
+        )
+        state_estimator_msg.estimator_type = (
+            franka_controller_pb2.FrankaStateEstimatorMessage.EstimatorType.EXPONENTIAL_SMOOTHING_ESTIMATOR
+        )
+        exponential_estimator = franka_controller_pb2.ExponentialSmoothingConfig()
+        exponential_estimator.alpha_q = controller_cfg.state_estimator_cfg.alpha_q
+        exponential_estimator.alpha_dq = controller_cfg.state_estimator_cfg.alpha_dq
+        exponential_estimator.alpha_eef = controller_cfg.state_estimator_cfg.alpha_eef
+        state_estimator_msg.config.Pack(exponential_estimator)
+
+        if controller_type == "OSC_POSE":
+            assert controller_cfg is not None
+
+            osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
+            osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
+            osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
+
+            osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
+
+            osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
+            osc_msg.config.CopyFrom(osc_config)
+            action[0:3] *= controller_cfg.action_scale.translation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+
+            logger.debug(f"OSC action: {np.round(action, 3)}")
+
+            self._history_actions.append(action)
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
+            osc_msg.goal.CopyFrom(goal)
+
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.OSC_POSE
+            )
+            control_msg.traj_interpolator_type = TRAJ_INTERPOLATOR_MAPPING[
+                controller_cfg.traj_interpolator_cfg.traj_interpolator_type
+            ]
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(osc_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        elif controller_type == "OSC_POSITION":
+
+            assert controller_cfg is not None
+
+            osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
+            osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
+            osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
+
+            osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
+            osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
+            osc_msg.config.CopyFrom(osc_config)
+
+            action[0:3] *= controller_cfg.action_scale.translation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+
+            self._history_actions.append(action)
+
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
+            osc_msg.goal.CopyFrom(goal)
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.OSC_POSITION
+            )
+            control_msg.traj_interpolator_type = TRAJ_INTERPOLATOR_MAPPING[
+                controller_cfg.traj_interpolator_cfg.traj_interpolator_type
+            ]
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(osc_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        elif controller_type == "OSC_YAW":
+            assert controller_cfg is not None
+
+            osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
+            osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
+            osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
+
+            osc_config = franka_controller_pb2.FrankaOSCControllerConfig()
+            osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
+            osc_msg.config.CopyFrom(osc_config)
+
+            action[0:3] *= controller_cfg.action_scale.translation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+
+            self._history_actions.append(action)
+
+            goal = action_to_osc_pose_goal(
+                action, is_delta=controller_cfg.is_delta)
+            osc_msg.goal.CopyFrom(goal)
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.OSC_YAW
+            )
+            control_msg.traj_interpolator_type = TRAJ_INTERPOLATOR_MAPPING[
+                controller_cfg.traj_interpolator_cfg.traj_interpolator_type
+            ]
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(osc_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        elif controller_type == "JOINT_POSITION":
+
+            assert controller_cfg is not None
+            assert len(action) == 7 + 1
+
+            joint_pos_msg = franka_controller_pb2.FrankaJointPositionControllerMessage()
+            joint_pos_msg.speed_factor = 0.1
+            goal = action_to_joint_pos_goal(
+                action, is_delta=controller_cfg.is_delta)
+
+            joint_pos_msg.goal.CopyFrom(goal)
+
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.JOINT_POSITION
+            )
+            control_msg.traj_interpolator_type = (
+                franka_controller_pb2.FrankaControlMessage.TrajInterpolatorType.SMOOTH_JOINT_POSITION
+            )
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(joint_pos_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        elif controller_type == "JOINT_IMPEDANCE":
+
+            assert controller_cfg is not None
+            assert len(action) == 7 + 1
+
+            joint_impedance_msg = (
+                franka_controller_pb2.FrankaJointImpedanceControllerMessage()
+            )
+            goal = action_to_joint_pos_goal(
+                action, is_delta=controller_cfg.is_delta)
+
+            joint_impedance_msg.goal.CopyFrom(goal)
+
+            joint_impedance_msg.kp[:] = controller_cfg.joint_kp
+            joint_impedance_msg.kd[:] = controller_cfg.joint_kd
+
+            control_msg = franka_controller_pb2.FrankaControlMessage()
+            control_msg.controller_type = (
+                franka_controller_pb2.FrankaControlMessage.ControllerType.JOINT_IMPEDANCE
+            )
+            control_msg.traj_interpolator_type = TRAJ_INTERPOLATOR_MAPPING[
+                controller_cfg.traj_interpolator_cfg.traj_interpolator_type
+            ]
+            control_msg.traj_interpolator_time_fraction = (
+                controller_cfg.traj_interpolator_cfg["time_fraction"]
+            )
+            control_msg.control_msg.Pack(joint_impedance_msg)
+            control_msg.timeout = 0.2
+            control_msg.termination = termination
+
+            control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+
+            msg_str = control_msg.SerializeToString()
+            self._publisher.send(msg_str)
+
+        elif controller_type == "CARTESIAN_VELOCITY":
+            assert controller_cfg is not None
+
+            cartesian_velocity_msg = franka_controller_pb2.FrankaCartesianVelocityControllerMessage()
+
+            action[0:3] *= controller_cfg.action_scale.translation
+            action[3: self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+
+            logger.debug(f"OSC action: {np.round(action, 3)}")
+
+            self._history_actions.append(action)
+            goal = action_to_cartesian_velocity(
+                action, is_delta=controller_cfg.is_delta)
             cartesian_velocity_msg.goal.CopyFrom(goal)
 
             control_msg = franka_controller_pb2.FrankaControlMessage()
@@ -484,7 +768,8 @@ class FrankaInterface:
         #     self.gripper_control(action[self.last_gripper_dim])
 
         if self.use_visualizer and len(self._state_buffer) > 0:
-            self.visualizer.update(joint_positions=np.array(self._state_buffer[-1].q))
+            self.visualizer.update(
+                joint_positions=np.array(self._state_buffer[-1].q))
 
     def gripper_control(self, action: float):
         """Control the gripper
@@ -500,7 +785,7 @@ class FrankaInterface:
 
         # TODO (Yifeng): Test if sending grasping or gripper directly
         # will stop executing the previous command
-        if action < 0.0:  #  and self.last_gripper_action == 1):
+        if action < 0.0:  # and self.last_gripper_action == 1):
             move_msg = franka_controller_pb2.FrankaGripperMoveMessage()
             move_msg.width = 0.08 * np.abs(action)
             move_msg.speed = 0.1
@@ -508,8 +793,9 @@ class FrankaInterface:
 
             logger.debug("Gripper opening")
 
-            self._gripper_publisher.send(gripper_control_msg.SerializeToString())
-        elif action >= 0.0:  #  and self.last_gripper_action == 0:
+            self._gripper_publisher.send(
+                gripper_control_msg.SerializeToString())
+        elif action >= 0.0:  # and self.last_gripper_action == 0:
             grasp_msg = franka_controller_pb2.FrankaGripperGraspMessage()
             grasp_msg.width = -0.01
             grasp_msg.speed = 0.5
@@ -521,7 +807,8 @@ class FrankaInterface:
 
             logger.debug("Gripper closing")
 
-            self._gripper_publisher.send(gripper_control_msg.SerializeToString())
+            self._gripper_publisher.send(
+                gripper_control_msg.SerializeToString())
         self.last_gripper_action = action
 
     def close(self):
@@ -547,7 +834,8 @@ class FrankaInterface:
         """
         if self.state_buffer_size == 0:
             return None, None
-        O_T_EE = np.array(self._state_buffer[-1].O_T_EE).reshape(4, 4).transpose()
+        O_T_EE = np.array(
+            self._state_buffer[-1].O_T_EE).reshape(4, 4).transpose()
         return O_T_EE[:3, :3], O_T_EE[:3, 3:]
 
     @property
@@ -559,7 +847,8 @@ class FrankaInterface:
         """
         if self.state_buffer_size == 0:
             return None, None
-        O_T_EE = np.array(self._state_buffer[-1].O_T_EE).reshape(4, 4).transpose()
+        O_T_EE = np.array(
+            self._state_buffer[-1].O_T_EE).reshape(4, 4).transpose()
         return transform_utils.mat2quat(O_T_EE[:3, :3]), O_T_EE[:3, 3:]
 
     def check_nonzero_configuration(self) -> bool:
