@@ -811,6 +811,17 @@ class FrankaInterface:
                 gripper_control_msg.SerializeToString())
         self.last_gripper_action = action
 
+    def stop_gripper(self):
+        gripper_control_msg = franka_controller_pb2.FrankaGripperControlMessage()
+        stop_msg = franka_controller_pb2.FrankaGripperStopMessage()
+        stop_msg.stop = True
+        gripper_control_msg.control_msg.Pack(stop_msg)
+
+        print("Stop gripper!!!")
+
+        self._gripper_publisher.send(
+            gripper_control_msg.SerializeToString())
+
     def close(self):
         self._state_sub_thread.join(1.0)
 
@@ -899,6 +910,12 @@ class FrankaInterface:
         if self.gripper_state_buffer_size == 0:
             return None
         return np.array(self._gripper_state_buffer[-1].width)
+
+    @property
+    def last_gripper_is_grasped(self) -> bool:
+        if self.gripper_state_buffer_size == 0:
+            return None
+        return self._gripper_state_buffer[-1].is_grasped
 
     @property
     def last_dq(self) -> np.ndarray:

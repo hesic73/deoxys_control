@@ -22,7 +22,7 @@
 #include "franka_robot_state.pb.h"
 
 int main(int argc, char **argv) {
-
+  std::cout<<"Gripper Control Node.\n";
   // Load cofigs
   YAML::Node config = YAML::LoadFile(argv[1]);
 
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     // Main loop
     while (running) {
       if (executing) {
-        FrankaGripperStopMessage homing_msg;
+        FrankaGripperHomingMessage homing_msg;
         FrankaGripperMoveMessage move_msg;
         FrankaGripperGraspMessage grasp_msg;
         FrankaGripperStopMessage stop_msg;
@@ -149,12 +149,15 @@ int main(int argc, char **argv) {
 
         auto gripper_control = last_control_msg.control_msg();
         if (gripper_control.UnpackTo(&homing_msg)) {
+          std::cout<<"Unpack to homing_msg.\n";
           gripper.homing();
           has_grasped = false;
         } else if (gripper_control.UnpackTo(&move_msg)) {
+          std::cout<<"Unpack to move_msg.\n";
           gripper.move(move_msg.width(), move_msg.speed());
           has_grasped = false;
         } else if (gripper_control.UnpackTo(&grasp_msg)) {
+          std::cout<<"Unpack to grasp_msg.\n";
           if (has_grasped) {
             continue;
           }
@@ -181,6 +184,7 @@ int main(int argc, char **argv) {
 
           gripper_logger->info("Grasped? {0}", has_grasped);
         } else if (gripper_control.UnpackTo(&stop_msg)) {
+          std::cout<<"Unpack to stop_msg.\n";
           gripper.stop();
           has_grasped = false;
         } else {
