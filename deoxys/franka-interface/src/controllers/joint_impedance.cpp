@@ -130,6 +130,13 @@ JointImpedanceController::Step(const franka::RobotState &robot_state,
   // joint_pos_error << desired_q_ - q;
   // tau_d << Kp.cwiseProduct(joint_pos_error) - Kd.cwiseProduct(dq);
 
+  // Limit torque commands to prevent motion discontinuities
+  constexpr double max_torque = 10.0; // Conservative torque limit in Nm
+  for (int i = 0; i < 7; i++) {
+    if (tau_d[i] > max_torque) tau_d[i] = max_torque;
+    if (tau_d[i] < -max_torque) tau_d[i] = -max_torque;
+  }
+
   Eigen::Matrix<double, 7, 1> dist2joint_max;
   Eigen::Matrix<double, 7, 1> dist2joint_min;
 

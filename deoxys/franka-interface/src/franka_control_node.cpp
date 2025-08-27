@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <csignal>
 
 #include <franka/exception.h>
 #include <franka/model.h>
@@ -160,7 +161,39 @@ bool GetStateEstimatorType(const FrankaControlMessage franka_control_msg,
   return true;
 }
 
+// Signal handler for better crash information
+void signal_handler(int signal) {
+  const char* signal_name;
+  switch (signal) {
+    case SIGSEGV: signal_name = "SIGSEGV (Segmentation fault)"; break;
+    case SIGABRT: signal_name = "SIGABRT (Abort)"; break;
+    case SIGFPE:  signal_name = "SIGFPE (Floating point exception)"; break;
+    case SIGILL:  signal_name = "SIGILL (Illegal instruction)"; break;
+    case SIGTERM: signal_name = "SIGTERM (Termination request)"; break;
+    case SIGINT:  signal_name = "SIGINT (Interrupt)"; break;
+    default:      signal_name = "Unknown signal"; break;
+  }
+  
+  std::cerr << "\n=== CRASH DETECTED ===\n";
+  std::cerr << "Signal received: " << signal << " (" << signal_name << ")\n";
+  std::cerr << "Program will terminate.\n";
+  std::cerr << "Check logs for more detailed error information.\n";
+  std::cerr << "=====================\n" << std::endl;
+  
+  // Call the default handler
+  std::signal(signal, SIG_DFL);
+  std::raise(signal);
+}
+
 int main(int argc, char **argv) {
+  // Register signal handlers for better crash reporting
+  std::signal(SIGSEGV, signal_handler);
+  std::signal(SIGABRT, signal_handler);
+  std::signal(SIGFPE, signal_handler);
+  std::signal(SIGILL, signal_handler);
+  std::signal(SIGTERM, signal_handler);
+  std::signal(SIGINT, signal_handler);
+
   // Load cofigs
   if (argc < 2) {
     spdlog::error("It seems that you forgot to specify a yaml config file");
@@ -320,25 +353,26 @@ int main(int argc, char **argv) {
 
     // control message subscription thread
     std::thread control_msg_sub([&]() {
-      while (!global_handler->termination) {
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(int(1. / policy_rate * 1000.)));
+      try {
+        while (!global_handler->termination) {
+          std::this_thread::sleep_for(
+              std::chrono::milliseconds(int(1. / policy_rate * 1000.)));
 
-        // Receive message
-        std::string msg;
-        msg = zmq_sub.recv(zmq_noblock);
-        if (msg.length() == 0) {
-          global_handler->no_msg_counter += int(global_handler->start);
-          global_handler->logger->debug("Counter {0}",
-                                        global_handler->no_msg_counter);
-          if (global_handler->no_msg_counter >= 20) {
-            global_handler->running = false;
-            global_handler->termination = true;
-            global_handler->logger->debug(
-                "No valid messages received in 20 steps");
+          // Receive message
+          std::string msg;
+          msg = zmq_sub.recv(zmq_noblock);
+          if (msg.length() == 0) {
+            global_handler->no_msg_counter += int(global_handler->start);
+            global_handler->logger->debug("Counter {0}",
+                                          global_handler->no_msg_counter);
+            if (global_handler->no_msg_counter >= 20) {
+              global_handler->running = false;
+              global_handler->termination = true;
+              global_handler->logger->debug(
+                  "No valid messages received in 20 steps");
+            }
+            continue;
           }
-          continue;
-        }
 
         FrankaControlMessage control_msg;
 
@@ -440,6 +474,8 @@ int main(int argc, char **argv) {
           global_handler->start = true;
           if (traj_interpolator_type !=
               control_command.traj_interpolator_type) {
+            global_handler->logger->debug("Initializing trajectory interpolator, type: {0}", 
+                                         static_cast<int>(control_command.traj_interpolator_type));
             if (control_command.traj_interpolator_type ==
                 TrajInterpolatorType::LINEAR_POSE) {
               global_handler->traj_interpolator_ptr =
@@ -491,10 +527,21 @@ int main(int argc, char **argv) {
             traj_interpolator_type = control_command.traj_interpolator_type;
           }
 
+          if (!global_handler->controller_ptr) {
+            global_handler->logger->error("Controller pointer is null!");
+            continue;
+          }
+
           global_handler->controller_ptr->ParseMessage(control_msg);
 
           global_handler->controller_ptr->ComputeGoal(current_state_info,
                                                       goal_state_info);
+          
+          if (!global_handler->traj_interpolator_ptr) {
+            global_handler->logger->error("Trajectory interpolator pointer is null!");
+            continue;
+          }
+          
           switch (control_command.traj_interpolator_type) {
           case TrajInterpolatorType::LINEAR_POSE:
           case TrajInterpolatorType::LINEAR_POSITION:
@@ -532,56 +579,76 @@ int main(int argc, char **argv) {
                                        global_handler->no_msg_counter);
         }
       }
+      } catch (const std::exception& e) {
+        global_handler->logger->error("Exception in control_msg_sub thread: {0}", e.what());
+        global_handler->termination = true;
+        global_handler->running = false;
+      } catch (...) {
+        global_handler->logger->error("Unknown exception in control_msg_sub thread");
+        global_handler->termination = true;
+        global_handler->running = false;
+      }
     });
 
     // Main loop
     global_handler->logger->info("Deoxys starting");
-    while (!global_handler->termination) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      // If controller_type changes, exit robot control loop and reinitialize.
-      FrankaControlMessage control_msg;
+    try {
+      while (!global_handler->termination) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // If controller_type changes, exit robot control loop and reinitialize.
+        FrankaControlMessage control_msg;
 
-      if (control_command.mutex.try_lock()) {
-        controller_type = control_command.controller_type;
-        control_msg = control_command.control_msg;
-        control_command.mutex.unlock();
-      }
-
-      if (global_handler->running) {
-        init_state = robot.readOnce();
-        state_publisher->UpdateNewState(init_state, &model);
-        if (controller_type == ControllerType::NO_CONTROL)
-          continue;
-        // Choose which control callback functions
-        if (controller_type == ControllerType::OSC_POSE ||
-            controller_type == ControllerType::OSC_POSITION ||
-            controller_type == ControllerType::OSC_YAW) {
-          // OSC control callback
-          robot.control(
-              control_callbacks::CreateTorqueFromCartesianSpaceCallback(
-                  global_handler, state_publisher, model, current_state_info,
-                  goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
-          // Joint Impedance control callback
-          global_handler->logger->info("Joint impedance callback");
-          robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::JOINT_POSITION) {
-          // Joint Position control callback
-          global_handler->logger->info("Joint position callback");
-          robot.control(control_callbacks::CreateJointPositionCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
-        } else if (controller_type == ControllerType::CARTESIAN_VELOCITY) {
-          // Cartesian Velocity control callback
-          global_handler->logger->info("Cartesian velocity callback");
-          robot.control(control_callbacks::CreateCartesianVelocitiesCallback(
-              global_handler, state_publisher, model, current_state_info,
-              goal_state_info, policy_rate, traj_rate));
+        if (control_command.mutex.try_lock()) {
+          controller_type = control_command.controller_type;
+          control_msg = control_command.control_msg;
+          control_command.mutex.unlock();
         }
+
+        if (global_handler->running) {
+          init_state = robot.readOnce();
+          state_publisher->UpdateNewState(init_state, &model);
+          if (controller_type == ControllerType::NO_CONTROL)
+            continue;
+          // Choose which control callback functions
+          if (controller_type == ControllerType::OSC_POSE ||
+              controller_type == ControllerType::OSC_POSITION ||
+              controller_type == ControllerType::OSC_YAW) {
+            // OSC control callback
+            robot.control(
+                control_callbacks::CreateTorqueFromCartesianSpaceCallback(
+                    global_handler, state_publisher, model, current_state_info,
+                    goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::JOINT_IMPEDANCE) {
+            // Joint Impedance control callback
+            global_handler->logger->info("Joint impedance callback");
+            robot.control(control_callbacks::CreateTorqueFromJointSpaceCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::JOINT_POSITION) {
+            // Joint Position control callback
+            global_handler->logger->info("Joint position callback");
+            robot.control(control_callbacks::CreateJointPositionCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          } else if (controller_type == ControllerType::CARTESIAN_VELOCITY) {
+            // Cartesian Velocity control callback
+            global_handler->logger->info("Cartesian velocity callback");
+            robot.control(control_callbacks::CreateCartesianVelocitiesCallback(
+                global_handler, state_publisher, model, current_state_info,
+                goal_state_info, policy_rate, traj_rate));
+          }
+        }
+        global_handler->time = 0.0;
       }
-      global_handler->time = 0.0;
+    } catch (const franka::Exception& e) {
+      global_handler->logger->error("Franka exception in main loop: {0}", e.what());
+      global_handler->termination = true;
+    } catch (const std::exception& e) {
+      global_handler->logger->error("Standard exception in main loop: {0}", e.what());
+      global_handler->termination = true;
+    } catch (...) {
+      global_handler->logger->error("Unknown exception in main loop");
+      global_handler->termination = true;
     }
     state_publisher->StopPublishing();
 

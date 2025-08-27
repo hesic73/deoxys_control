@@ -25,10 +25,6 @@ add_compile_options(-Wall -Wextra)
 
 message("${_GLIBCXX_USE_CXX11_ABI}")
 
-set(Protobuf_INCLUDE_DIRS /home/hsc/protobuf-3.13.0-install/include)
-set(Protobuf_LIBRARIES /home/hsc/protobuf-3.13.0-install/lib/libprotobuf.so)
-set(Protobuf_PROTOC_EXECUTABLE /home/hsc/protobuf-3.13.0-install/bin/protoc)
-
 find_package(Protobuf REQUIRED)
 
 message(STATUS "Protobuf Found: ${Protobuf_FOUND}")
