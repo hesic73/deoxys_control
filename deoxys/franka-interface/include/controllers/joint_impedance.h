@@ -10,6 +10,7 @@
 namespace controller {
 class JointImpedanceController : public BaseController {
 protected:
+  const Eigen::Array<double, 7, 1> max_torque_;
   FrankaJointImpedanceControllerMessage control_msg_;
   Eigen::Matrix<double, 7, 1> Kp, Kd;
 

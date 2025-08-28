@@ -25,11 +25,15 @@
 
 #include <memory>
 
+constexpr double max_torque_factor=1.0;
+
 namespace controller {
-JointImpedanceController::JointImpedanceController() {}
+JointImpedanceController::JointImpedanceController()
+  : max_torque_((Eigen::Array<double, 7, 1>() << 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0).finished()) {}
 JointImpedanceController::~JointImpedanceController() {}
 
-JointImpedanceController::JointImpedanceController(franka::Model &model) {
+JointImpedanceController::JointImpedanceController(franka::Model &model)
+    : max_torque_((Eigen::Array<double, 7, 1>() << 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0).finished()) {
   model_ = &model;
 }
 
@@ -130,12 +134,7 @@ JointImpedanceController::Step(const franka::RobotState &robot_state,
   // joint_pos_error << desired_q_ - q;
   // tau_d << Kp.cwiseProduct(joint_pos_error) - Kd.cwiseProduct(dq);
 
-  // Limit torque commands to prevent motion discontinuities
-  constexpr double max_torque = 10.0; // Conservative torque limit in Nm
-  for (int i = 0; i < 7; i++) {
-    if (tau_d[i] > max_torque) tau_d[i] = max_torque;
-    if (tau_d[i] < -max_torque) tau_d[i] = -max_torque;
-  }
+  tau_d = tau_d.array().max(-max_torque_*max_torque_factor).min(max_torque_*max_torque_factor).matrix();
 
   Eigen::Matrix<double, 7, 1> dist2joint_max;
   Eigen::Matrix<double, 7, 1> dist2joint_min;
