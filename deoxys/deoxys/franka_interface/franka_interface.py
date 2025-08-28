@@ -822,6 +822,16 @@ class FrankaInterface:
         self._gripper_publisher.send(
             gripper_control_msg.SerializeToString())
 
+    def home_gripper(self):
+        gripper_control_msg = franka_controller_pb2.FrankaGripperControlMessage()
+        home_msg = franka_controller_pb2.FrankaGripperHomingMessage()
+        gripper_control_msg.control_msg.Pack(home_msg)
+
+        print("Home gripper!!!")
+
+        self._gripper_publisher.send(
+            gripper_control_msg.SerializeToString())
+
     def close(self):
         self._state_sub_thread.join(1.0)
 
