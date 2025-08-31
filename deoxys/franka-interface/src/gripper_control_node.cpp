@@ -22,7 +22,7 @@
 #include "franka_robot_state.pb.h"
 
 int main(int argc, char **argv) {
-  std::cout<<"Gripper Control Node.\n";
+  // std::cout<<"Gripper Control Node.\n";
   // Load cofigs
   YAML::Node config = YAML::LoadFile(argv[1]);
 
@@ -78,53 +78,75 @@ int main(int argc, char **argv) {
     gripper_logger->info("Gripper state publisher: {0}Hz", pub_rate);
     // Initialize gripper subscribing / publishing thread,
     std::thread gripper_pub_thread([&]() {
-      franka::GripperState current_gripper_state;
-      while (running) {
-        if (gripper_state.mutex.try_lock()) {
-          gripper_state.state = gripper.readOnce();
-          current_gripper_state = gripper_state.state;
-          gripper_state.mutex.unlock();
-        }
+      try {
+        franka::GripperState current_gripper_state;
+        while (running) {
+          if (gripper_state.mutex.try_lock()) {
+            gripper_state.state = gripper.readOnce();
+            current_gripper_state = gripper_state.state;
+            gripper_state.mutex.unlock();
+          }
 
-        FrankaGripperStateMessage gripper_state_msg;
-        gripper_state_utils.LoadGripperStateToMsg(current_gripper_state,
-                                                  gripper_state_msg);
-        std::string serialized_gripper_state_msg;
-        gripper_state_msg.SerializeToString(&serialized_gripper_state_msg);
-        zmq_pub.send(serialized_gripper_state_msg);
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(static_cast<int>(1. / pub_rate * 1000)));
+          FrankaGripperStateMessage gripper_state_msg;
+          gripper_state_utils.LoadGripperStateToMsg(current_gripper_state,
+                                                    gripper_state_msg);
+          std::string serialized_gripper_state_msg;
+          gripper_state_msg.SerializeToString(&serialized_gripper_state_msg);
+          zmq_pub.send(serialized_gripper_state_msg);
+          std::this_thread::sleep_for(
+              std::chrono::milliseconds(static_cast<int>(1. / pub_rate * 1000)));
+        }
+      } catch (const franka::Exception &e) {
+        gripper_logger->error("Gripper publisher thread exception: {}", e.what());
+        running = false;
+      } catch (const std::exception &e) {
+        gripper_logger->error("Gripper publisher thread standard exception: {}", e.what());
+        running = false;
+      } catch (...) {
+        gripper_logger->error("Gripper publisher thread unknown exception");
+        running = false;
       }
     });
 
     // A gripper command subscribing thread, and send gripper stop command if
     // received the stop command
     std::thread gripper_sub_thread([&]() {
-      bool new_control_msg = false;
-      while (running) {
-        std::string msg;
-        msg = zmq_sub.recv(false);
-        FrankaGripperControlMessage control_msg;
-        if (control_msg.ParseFromString(msg)) {
-          new_control_msg = true;
-          if (gripper_cmd.mutex.try_lock()) {
-            gripper_cmd.control_msg = control_msg;
-            gripper_cmd.mutex.unlock();
+      try {
+        bool new_control_msg = false;
+        while (running) {
+          std::string msg;
+          msg = zmq_sub.recv(false);
+          FrankaGripperControlMessage control_msg;
+          if (control_msg.ParseFromString(msg)) {
+            new_control_msg = true;
+            if (gripper_cmd.mutex.try_lock()) {
+              gripper_cmd.control_msg = control_msg;
+              gripper_cmd.mutex.unlock();
+            }
           }
-        }
-        auto gripper_control = control_msg.control_msg();
-        FrankaGripperStopMessage stop_msg;
-        if (gripper_control.UnpackTo(&stop_msg)) {
-          gripper.stop();
-        }
+          auto gripper_control = control_msg.control_msg();
+          FrankaGripperStopMessage stop_msg;
+          if (gripper_control.UnpackTo(&stop_msg)) {
+            gripper.stop();
+          }
 
-        // Decide if terminate or not
-        if (control_msg.termination()) {
-          running = false;
-        } else {
-          executing = true;
+          // Decide if terminate or not
+          if (control_msg.termination()) {
+            running = false;
+          } else {
+            executing = true;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      } catch (const franka::Exception &e) {
+        gripper_logger->error("Gripper subscriber thread exception: {}", e.what());
+        running = false;
+      } catch (const std::exception &e) {
+        gripper_logger->error("Gripper subscriber thread standard exception: {}", e.what());
+        running = false;
+      } catch (...) {
+        gripper_logger->error("Gripper subscriber thread unknown exception");
+        running = false;
       }
     });
 
@@ -134,61 +156,72 @@ int main(int argc, char **argv) {
     // Main loop
     while (running) {
       if (executing) {
-        FrankaGripperHomingMessage homing_msg;
-        FrankaGripperMoveMessage move_msg;
-        FrankaGripperGraspMessage grasp_msg;
-        FrankaGripperStopMessage stop_msg;
+        try {
+          FrankaGripperHomingMessage homing_msg;
+          FrankaGripperMoveMessage move_msg;
+          FrankaGripperGraspMessage grasp_msg;
+          FrankaGripperStopMessage stop_msg;
 
-        FrankaGripperControlMessage last_control_msg;
-        if (gripper_cmd.mutex.try_lock()) {
-          last_control_msg = gripper_cmd.control_msg;
-          gripper_cmd.mutex.unlock();
-        } else {
-          continue;
-        }
-
-        auto gripper_control = last_control_msg.control_msg();
-        if (gripper_control.UnpackTo(&homing_msg)) {
-          std::cout<<"Unpack to homing_msg.\n";
-          gripper.homing();
-          has_grasped = false;
-        } else if (gripper_control.UnpackTo(&move_msg)) {
-          std::cout<<"Unpack to move_msg.\n";
-          gripper.move(move_msg.width(), move_msg.speed());
-          has_grasped = false;
-        } else if (gripper_control.UnpackTo(&grasp_msg)) {
-          std::cout<<"Unpack to grasp_msg.\n";
-          if (has_grasped) {
+          FrankaGripperControlMessage last_control_msg;
+          if (gripper_cmd.mutex.try_lock()) {
+            last_control_msg = gripper_cmd.control_msg;
+            gripper_cmd.mutex.unlock();
+          } else {
             continue;
           }
-          double epsilon_inner, epsilon_outer;
-          if (grasp_msg.epsilon_inner() == 0. &&
-              grasp_msg.epsilon_outer() == 0.) {
-            // if not defined, we will keep epsilon high so that it won't get
-            // stuck
-            epsilon_inner = 0.08;
-            epsilon_outer = 0.08;
-          } else {
-            epsilon_inner = grasp_msg.epsilon_inner();
-            epsilon_outer = grasp_msg.epsilon_outer();
-          }
 
-          double force;
-          if (grasp_msg.force() == 0.) {
-            force = 2.0;
-          } else {
-            force = grasp_msg.force();
-          }
-          has_grasped = gripper.grasp(grasp_msg.width(), grasp_msg.speed(),
-                                      force, epsilon_inner, epsilon_outer);
+          auto gripper_control = last_control_msg.control_msg();
+          if (gripper_control.UnpackTo(&homing_msg)) {
+            // std::cout<<"Unpack to homing_msg.\n";
+            gripper.homing();
+            has_grasped = false;
+          } else if (gripper_control.UnpackTo(&move_msg)) {
+            // std::cout<<"Unpack to move_msg.\n";
+            gripper.move(move_msg.width(), move_msg.speed());
+            has_grasped = false;
+          } else if (gripper_control.UnpackTo(&grasp_msg)) {
+            // std::cout<<"Unpack to grasp_msg.\n";
+            if (has_grasped) {
+              continue;
+            }
+            double epsilon_inner, epsilon_outer;
+            if (grasp_msg.epsilon_inner() == 0. &&
+                grasp_msg.epsilon_outer() == 0.) {
+              // if not defined, we will keep epsilon high so that it won't get
+              // stuck
+              epsilon_inner = 0.08;
+              epsilon_outer = 0.08;
+            } else {
+              epsilon_inner = grasp_msg.epsilon_inner();
+              epsilon_outer = grasp_msg.epsilon_outer();
+            }
 
-          gripper_logger->info("Grasped? {0}", has_grasped);
-        } else if (gripper_control.UnpackTo(&stop_msg)) {
-          std::cout<<"Unpack to stop_msg.\n";
-          gripper.stop();
-          has_grasped = false;
-        } else {
-          gripper_logger->warn("Unpack failed");
+            double force;
+            if (grasp_msg.force() == 0.) {
+              force = 2.0;
+            } else {
+              force = grasp_msg.force();
+            }
+            has_grasped = gripper.grasp(grasp_msg.width(), grasp_msg.speed(),
+                                        force, epsilon_inner, epsilon_outer);
+
+            gripper_logger->info("Grasped? {0}", has_grasped);
+          } else if (gripper_control.UnpackTo(&stop_msg)) {
+            // std::cout<<"Unpack to stop_msg.\n";
+            gripper.stop();
+            has_grasped = false;
+          } else {
+            gripper_logger->warn("Unpack failed");
+          }
+        } catch (const franka::Exception &e) {
+          gripper_logger->error("Gripper operation exception: {}", e.what());
+          // Continue running but stop executing current command
+        } catch (const std::exception &e) {
+          gripper_logger->error("Main loop standard exception: {}", e.what());
+          // Continue running but stop executing current command
+        } catch (...) {
+          gripper_logger->error("Main loop unknown exception");
+          // Continue running but stop executing current command
         }
         executing = false;
       }
