@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 import pprint
-from asyncore import file_dispatcher
 from pathlib import Path
 from typing import Type
 
