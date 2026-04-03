@@ -771,11 +771,12 @@ class FrankaInterface:
             self.visualizer.update(
                 joint_positions=np.array(self._state_buffer[-1].q))
 
-    def gripper_control(self, action: float):
+    def gripper_control(self, action: float, force: float = 30.0):
         """Control the gripper
 
         Args:
             action (float): The control command for Franka gripper. Currently assuming scalar control commands.
+            force (float): The force to apply when closing the gripper.
         """
 
         gripper_control_msg = franka_controller_pb2.FrankaGripperControlMessage()
@@ -799,7 +800,7 @@ class FrankaInterface:
             grasp_msg = franka_controller_pb2.FrankaGripperGraspMessage()
             grasp_msg.width = -0.01
             grasp_msg.speed = 0.5
-            grasp_msg.force = 30.0
+            grasp_msg.force = force
             grasp_msg.epsilon_inner = 0.08
             grasp_msg.epsilon_outer = 0.08
 
